@@ -1,6 +1,6 @@
 # Deployment and embedding
 
-Status: local review only. The student handles sign-ins, billing, account connections, secrets, GitHub publication, Vercel deployment and Google Sites publication. No push or deployment has been performed by this implementation task.
+Status: the student has deployed the chatbot at https://event-planner-ai-assistant.vercel.app/. The Google Sites framing fix in this checkout is pending review and publication. The student handles sign-ins, billing, account connections, secrets, GitHub/Vercel publication and Google Sites publication.
 
 ## 1. Review and account preparation
 
@@ -51,7 +51,7 @@ Never stage `.env.local`, provider tokens or generated logs. The existing instru
 2. Framework: **Next.js**. Root: repository root. Node: **22.x**. Install: `npm ci`. Build: `npm run build`. Keep Next.js output defaults; do not select static export.
 3. Keep preview protection enabled where appropriate. Do not expose production credentials to untrusted preview branches. Vercel Hobby may suit an eligible personal, noncommercial school project; confirm current terms and limits before accepting any paid plan.
 4. Add environment variables below in the correct scope. Start Production with `CHAT_ENABLED=false` and `DEMO_MODE=true`. Previews should remain demo-only with no live credentials.
-5. Deploy only after your review. Record the **stable production domain** from Vercel's Domains tab, for example `https://YOUR-PROJECT.vercel.app`. This is a placeholder, not a claimed deployment. Use that domain, never a branch preview or deployment-specific hostname, for embedding.
+5. Deploy only after your review. The stable production domain is `https://event-planner-ai-assistant.vercel.app`. Use that domain, never a branch preview or deployment-specific hostname, for embedding.
 
 | Variable | Value / purpose |
 | --- | --- |
@@ -66,7 +66,7 @@ Never stage `.env.local`, provider tokens or generated logs. The existing instru
 | `MONTHLY_REQUEST_LIMIT` | `500` maximum; may be lowered |
 | `IP_BURST_LIMIT` | `30` by default; 1–100 |
 | `IP_BURST_WINDOW_SECONDS` | `60` by default; 1–3600 |
-| `FRAME_ANCESTORS` | Space-separated exact HTTPS origins observed in the actual published frame chain; initially blank |
+| `FRAME_ANCESTORS` | Space-separated HTTPS frame sources; for Google Sites use `https://sites.google.com`, which automatically includes Google's changing embed wrappers |
 
 Do not prefix secrets with `NEXT_PUBLIC_`. Vercel supplies `VERCEL=1` and overwrites the trusted client IP header. Production deployments elsewhere fail closed until a separate trusted-proxy integration is reviewed. Local `next dev` live smoke tests use a single shared development IP bucket.
 
@@ -74,20 +74,20 @@ Do not prefix secrets with `NEXT_PUBLIC_`. Vercel supplies `VERCEL=1` and overwr
 
 ## 5. Verify framing before live launch
 
-No Google Sites ancestor chain has been verified yet. The default is deliberately `frame-ancestors 'self'`, so cross-origin embedding initially fails closed. Do not guess that allowing only `https://sites.google.com` covers nested Google wrapper frames.
+The default is deliberately `frame-ancestors 'self'`, so cross-origin embedding initially fails closed. The published Novavents site references Google's `www.gstatic.com` intermediate embed frame and an `N-atari-embeds.googleusercontent.com` inner frame. The numeric subdomain changes between page loads, so a single exact wrapper origin cannot work. The narrowly permitted CSP wildcard `https://*.googleusercontent.com` is required for Google's generated wrapper; it also permits other subdomains of that user-content domain to frame `/embed`, so keep the public chat quotas enabled.
 
 1. Open the public production standalone page signed out. It must work without Vercel authentication. Adjust only the necessary production protection setting. Never put a bypass secret into a URL or embed code.
-2. In Google Sites at https://sites.google.com/view/novavents/, open the editor, choose **Insert > Embed > By URL**, enter the stable production `/embed` URL, and size the panel around 700 px tall and the full content width. Keep the app in demo mode while configuring frames.
-3. Publish/republish Google Sites when ready. In Chrome DevTools on the **published** page, inspect the frame tree (Application > Frames or the Elements iframe hierarchy), the blocked iframe request and the Console's CSP messages. Record the top-level origin and **every** intermediate frame origin, including any Google wrapper or custom domain. Opening an editor preview is not equivalent to inspecting the published page.
-4. Set `FRAME_ANCESTORS` to those exact HTTPS origins separated by spaces. A value like `https://sites.google.com https://EXACT-OBSERVED-WRAPPER.example` illustrates the syntax only; do not deploy that placeholder. No wildcard origins or URL paths are accepted. Redeploy Vercel and republish Sites as needed.
+2. Set the Production `FRAME_ANCESTORS` value in Vercel to `https://sites.google.com`, then deploy this code. The header automatically includes Google's intermediate `www.gstatic.com` frame and changing `*.googleusercontent.com` wrapper. The app accepts only this one wildcard pattern; other entries must be exact HTTPS origins.
+3. In Google Sites at https://sites.google.com/view/novavents/, open the editor, choose **Insert > Embed > By URL**, enter the stable production `/embed` URL, and size the panel around 700 px tall and the full content width. If Google Sites still rejects the URL during insertion, use **Embed code** with the iframe snippet below. The code tab does not override the CSP; step 2 is still required.
+4. Publish/republish Google Sites when ready. In Chrome DevTools on the **published** page, inspect the frame tree (Application > Frames or the Elements iframe hierarchy), the blocked iframe request and the Console's CSP messages. Record every actual intermediate frame origin and add any additional exact HTTPS origins to `FRAME_ANCESTORS`. Redeploy Vercel and republish Sites as needed. Opening an editor preview is not equivalent to inspecting the published page.
 5. Confirm `/embed` has an HTTP `Content-Security-Policy` header containing the full observed chain and **no** `X-Frame-Options: DENY` or `SAMEORIGIN`, including headers added by any proxy. All ancestors must pass CSP. If Google produces an opaque/sandboxed ancestor, investigate the actual frame behavior instead of weakening the policy blindly.
 6. Test the actual published iframe signed out, on a phone, and on the school network. Confirm sending, multiline input, internal transcript scrolling, Clear, Copy/fallback, and the standalone link. Browser storage and third-party cookies must not be required. CORS is unnecessary because the iframe calls its own origin's `/api/chat`.
 
-Optional embed code after replacing the placeholder:
+If the **By URL** tab continues to reject the site, use **Embed code**:
 
 ```html
 <iframe
-  src="https://YOUR-PROJECT.vercel.app/embed"
+  src="https://event-planner-ai-assistant.vercel.app/embed"
   title="Event Planner Assistant"
   width="100%"
   height="700"
@@ -96,14 +96,14 @@ Optional embed code after replacing the placeholder:
 ></iframe>
 ```
 
-Also add a normal Google Sites button linking to `https://YOUR-PROJECT.vercel.app/`. Google Sites controls the outer frame size. This is an always-open panel inside that frame, not a floating widget across the outer site.
+Also add a normal Google Sites button linking to `https://event-planner-ai-assistant.vercel.app/`. Google Sites controls the outer frame size. This is an always-open panel inside that frame, not a floating widget across the outer site.
 
 ## 6. Live smoke test and cost estimate
 
 After store integration and private key setup, set `CHAT_ENABLED=true`, `DEMO_MODE=false`, and redeploy (or restart local development). Confirm the active configuration. The following explicit smoke test makes **two live model attempts**, each subject to the durable quota, with no retries:
 
 ```powershell
-$env:SMOKE_BASE_URL = 'https://YOUR-PROJECT.vercel.app'
+$env:SMOKE_BASE_URL = 'https://event-planner-ai-assistant.vercel.app'
 $env:CONFIRM_LIVE_SMOKE = 'yes'
 npm run smoke:live
 Remove-Item Env:CONFIRM_LIVE_SMOKE
