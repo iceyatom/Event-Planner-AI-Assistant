@@ -121,10 +121,12 @@ describe('planner and deployment contracts', () => {
     expect(() => renderPlan({ ...plan, items: [{ name: 'invalid', quantity: -1, unitCents: 20 }] })).toThrow();
     expect(() => renderPlan({ ...plan, questions: ['a', 'b', 'c'] })).toThrow();
   });
-  it('requires exact frame origins and trusts only the Vercel IP header', () => {
+  it('accepts the Google Sites wrapper pattern and trusts only the Vercel IP header', () => {
     expect(frameAncestors()).toBe("'self'");
     expect(frameAncestors('https://sites.google.com https://wrapper.example')).toContain('https://wrapper.example');
-    for (const value of ['*', 'https://*.google.com', 'http://example.com', 'https://example.com/path', "https://example.com; script-src *"]) expect(() => frameAncestors(value)).toThrow();
+    expect(frameAncestors('https://sites.google.com')).toBe("'self' https://sites.google.com https://www.gstatic.com https://*.googleusercontent.com");
+    expect(frameAncestors('https://sites.google.com https://www.gstatic.com https://*.googleusercontent.com')).toContain('https://*.googleusercontent.com');
+    for (const value of ['*', 'https://*.google.com', 'https://*.example.com', 'http://example.com', 'https://example.com/path', "https://example.com; script-src *"]) expect(() => frameAncestors(value)).toThrow();
     expect(() => trustedIp(new Request('https://app.test', { headers: { 'x-forwarded-for': '1.2.3.4' } }), { VERCEL: '1' })).toThrow();
     expect(trustedIp(new Request('https://app.test', { headers: { 'x-vercel-forwarded-for': '1.2.3.4' } }), { VERCEL: '1' })).toBe('1.2.3.4');
   });
