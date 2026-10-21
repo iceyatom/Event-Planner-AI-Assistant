@@ -2,7 +2,49 @@
   "projectName": "Event Planner AI Assistant",
   "siteName": "Novavents",
   "siteUrl": "https://sites.google.com/view/novavents/",
+  "packages": [
+    {
+      "name": "Essential",
+      "tagline": "A beautiful start",
+      "fit": "smaller or simpler events that need the essentials, up to 6 hours of day-of help",
+      "includes": [
+        "Initial consultation",
+        "Event planning timeline",
+        "Vendor recommendations",
+        "Limited event-appropriate amenities",
+        "Day-of coordination (up to 6 hours)"
+      ]
+    },
+    {
+      "name": "Signature",
+      "tagline": "Our signature experience",
+      "fit": "events wanting a full timeline, custom design and vendor management, up to 10 hours",
+      "includes": [
+        "Initial consultation",
+        "Full event planning timeline and design",
+        "Vendor sourcing and management",
+        "Custom event design concept",
+        "Day-of coordination (up to 10 hours)",
+        "Aesthetic portable amenities"
+      ]
+    },
+    {
+      "name": "Luxe",
+      "tagline": "The ultimate experience",
+      "fit": "large, formal or fully custom events, rehearsals, or up to 12 hours of management",
+      "includes": [
+        "Initial consultation",
+        "Full event planning timeline and design",
+        "Premium vendor access",
+        "Custom event design and styling",
+        "Event-appropriate amenities",
+        "Rehearsal coordination (if applicable)",
+        "Full day-of management (up to 12 hours)",
+        "Post-event follow-up"
+      ]
+    }
+  ],
   "approvedEventFacts": [],
   "schoolPolicies": [],
-  "note": "No event date, venue, vendor prices, permissions, or school policies have been supplied. Ask or label assumptions."
+  "note": "No event date, venue, permissions, or school policies have been supplied. Ask or label assumptions."
 }

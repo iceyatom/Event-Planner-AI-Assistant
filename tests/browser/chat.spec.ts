@@ -7,13 +7,13 @@ test('desktop starter, send, revision, copy fallback, and clear', async ({ page 
   const input = page.getByRole('textbox', { name: 'Tell me about your event' });
   await expect(input).toBeFocused();
   await input.press('Enter');
-  await expect(page.getByRole('log')).toContainText('Total: USD 299.80');
-  await input.fill('Make it indoors and cut the budget to $200.');
+  await expect(page.getByRole('log')).toContainText('Known facts');
+  await input.fill('Actually make it indoors for 120 guests.');
   await input.press('Enter');
-  await expect(page.getByRole('log')).toContainText('Total: USD 200.00');
+  await expect(page.getByRole('log')).toContainText('Recommended package · Signature');
   await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('blocked by iframe')) }, configurable: true }); });
   await page.getByRole('button', { name: /Copy plan/ }).click();
-  await expect(page.getByLabel('Select and copy your plan')).toHaveValue(/Total: USD 200.00/);
+  await expect(page.getByLabel('Select and copy your plan')).toHaveValue(/Recommended package · Signature/);
   await page.getByRole('button', { name: 'Clear chat' }).click();
   await expect(page.getByRole('log')).toBeEmpty();
   await expect(input).toHaveValue('');
@@ -34,7 +34,7 @@ test('mobile at 320px and embed work without storage or cookies', async ({ page,
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('button', { name: /Plan a fundraiser/ }).click();
     await page.getByRole('button', { name: 'Send message' }).click();
-    await expect(page.getByRole('log')).toContainText('Estimated budget');
+    await expect(page.getByRole('log')).toContainText('Three directions');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByRole('link', { name: 'Open chatbot ↗', exact: true })).toHaveAttribute('target', '_blank');
   }

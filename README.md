@@ -22,7 +22,7 @@ npm run dev
 
 Open http://127.0.0.1:3000 or http://127.0.0.1:3000/embed. Existing `.env.local` files should not be overwritten. Defaults are `CHAT_ENABLED=false`, `DEMO_MODE=true`. No account or secret is needed for the labeled sample responses. The demo is deterministic and has a limited vocabulary; it is not evidence of live-model quality.
 
-Try “Plan a two-hour school fundraiser for 40 guests with a $300 budget.” Then “Make it indoors and cut the budget to $200.” The sample preserves 40 guests and 120 minutes. The first sample totals USD 299.80 with USD 0.20 remaining; the revision totals USD 200.00. Code multiplies quantities, sums integer cents, and computes agenda times.
+Try “Plan a two-hour school fundraiser for 40 guests.” Then “Actually make it indoors for 120 guests.” The sample summarizes the known facts, gives three event directions (each with a sample venue or company name), and recommends the Essential package, then Signature after the revision. Replies never include prices; package details come from `src/data/facts.json`.
 
 ## Modes
 
@@ -42,7 +42,7 @@ Only the exact string `true` enables a flag. Never silently fall back to demo wh
 - `src/lib/server/input.ts`: strict JSON validation, streamed 32 KB cap, 2,000-character new message, 12 prior user/assistant messages. Rejects roles, tools, and configuration injection.
 - `src/lib/server/model.ts`: official OpenAI SDK / Responses; fixed approved `gpt-5.6-luna`, reasoning `none`, `store:false`, 800 output tokens, empty tools, zero retries, 25-second timeout. Server-controlled configuration only. Structured text output provides numeric inputs to the arithmetic renderer.
 - `src/lib/server/quota.ts`: one atomic durable Redis Lua reservation before each paid attempt. UTC day limit 100, UTC month limit 500; sliding per-IP burst 30/60 seconds by default. Global caps can be lowered by configuration, never raised above the approved values. Uses Redis time, checks month boundaries, and fails closed on malformed replies, timeout, or missing configuration.
-- `src/lib/planner.ts`: validates structured output and calculates budget totals, remaining/over-budget amount, and elapsed agenda timing. Costs are integer hundredths; live prose remains AI generated and needs review.
+- `src/lib/planner.ts`: validates structured output and renders the reply: clarifying questions, three options, the recommended Novavents package (with its inclusions from `facts.json`), agenda timing and next steps. There are no price fields; live prose remains AI generated and needs review.
 - `next.config.ts`: HTTP CSP on `/embed`, no X-Frame-Options. Blank ancestor configuration permits only same-origin frames. Google Sites uses a changing `*.googleusercontent.com` wrapper, so that one constrained wildcard is supported in `FRAME_ANCESTORS` alongside exact HTTPS origins.
 
 The 6,000-token input ceiling uses a deliberately conservative UTF-8 byte upper bound plus framing allowance. It includes instructions, facts, output schema and messages. Old exchanges are dropped first, with a visible notice; if the new input still cannot fit, the server returns 400. Some multilingual or long messages below 2,000 characters may be rejected rather than exceeding the ceiling. This is not a precise tokenizer. No previous response ID, conversation store, or hidden model history is used.

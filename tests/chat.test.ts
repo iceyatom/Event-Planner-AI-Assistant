@@ -103,23 +103,37 @@ describe('live and disabled boundaries', () => {
 });
 
 describe('planner and deployment contracts', () => {
-  it('demo fundraiser preserves guest count and duration on revision and computes new total', () => {
+  it('demo asks questions first, then gives three options and one package with no prices', () => {
+    const early = demoReply({ message: 'I want to plan a wedding.', history: [] });
+    expect(early).toContain('A couple of details'); expect(early).not.toContain('Recommended package'); expect(early).toContain('• Event: wedding');
+    expect(early.match(/\?/g)?.length).toBeLessThanOrEqual(2);
     const first = demoReply(input);
-    expect(first).toContain('40 guests'); expect(first).toContain('Duration: 120 minutes'); expect(first).toContain('Total: USD 299.80'); expect(first).toContain('Remaining: USD 0.20');
-    const revised = demoReply({ message: 'Make it indoors and cut the budget to $200.', history: [{ role: 'user', content: input.message }, { role: 'assistant', content: first }] });
-    expect(revised).toContain('Indoor room'); expect(revised).toContain('40 guests'); expect(revised).toContain('Duration: 120 minutes'); expect(revised).toContain('Total: USD 200.00');
-    expect(revised.match(/\?/g)?.length).toBeLessThanOrEqual(2);
+    expect(first).toContain('40 guests'); expect(first).toContain('Three directions'); expect(first.match(/^\d\. /gm)).toHaveLength(3);
+    expect(first).toContain('Recommended package · Essential');
+    expect(first).toContain('Known facts\n• Event: fundraiser\n• Guests: about 40\n• Length: about 2 hours'); expect(first).not.toContain('(assumed)');
+    expect(first.match(/^   Example: .+ \(check availability\)$/gm)).toHaveLength(3);
+    const revised = demoReply({ message: 'Actually make it indoors for 120 guests.', history: [{ role: 'user', content: input.message }, { role: 'assistant', content: first }] });
+    expect(revised).toContain('• Setting: indoors'); expect(revised).toContain('• Guests: about 120'); expect(revised).not.toContain('about 40'); expect(revised).toContain('Recommended package · Signature');
+    for (const reply of [early, first, revised]) expect(reply).not.toMatch(/\$|USD|\d+\.\d\d|budget|cost/i);
   });
-  it('labels limitations and redirects unrelated requests', () => {
+  it('labels limitations, deflects pricing and redirects unrelated requests', () => {
     expect(demoReply({ message: 'Book a vendor at a confirmed price', history: [] })).toContain('cannot book');
+    expect(demoReply({ message: 'How much does Luxe cost?', history: [] })).toContain('pricing is on the Novavents site');
     expect(demoReply({ message: 'Write a history essay', history: [] })).toContain('event themes');
     expect(instructions).toContain('at most TWO'); expect(instructions).toContain('Never claim bookings');
+    expect(instructions).toContain('NO PRICING'); expect(instructions).toContain('exactly THREE');
+    expect(instructions).not.toMatch(/\$\d/); expect(instructions).toContain('knownFacts'); expect(instructions).toContain('Never claim availability');
   });
-  it('calculates fractional currency exactly, reports over-budget amounts and rejects bad numbers', () => {
-    const plan = { ...basePlan(), budgetCents: 20, items: [{ name: 'Supplies', quantity: 3, unitCents: 10 }] };
-    expect(renderPlan(plan)).toContain('Total: USD 0.30'); expect(renderPlan(plan)).toContain('Over budget: USD 0.10');
-    expect(() => renderPlan({ ...plan, items: [{ name: 'invalid', quantity: -1, unitCents: 20 }] })).toThrow();
+  it('renders options and package details, and rejects bad plans', () => {
+    const plan = { ...basePlan(), knownFacts: ['Guests: about 40'], options: [{ name: 'A', description: 'a', example: 'Hall, Austin' }, { name: 'B', description: 'b', example: '' }], recommendedPackage: 'Luxe' as const, packageReason: 'Big day.', agenda: [{ activity: 'Welcome', minutes: 15 }] };
+    const text = renderPlan(plan);
+    expect(text).toContain('Known facts\n• Guests: about 40'); expect(text).toContain('1. A: a\n   Example: Hall, Austin (check availability)\n2. B: b\n'); expect(text).toContain('Recommended package · Luxe'); expect(text).toContain('Post-event follow-up'); expect(text).toContain('Duration: 15 minutes');
+    expect(() => renderPlan({ ...plan, agenda: [{ activity: 'invalid', minutes: -1 }] })).toThrow();
     expect(() => renderPlan({ ...plan, questions: ['a', 'b', 'c'] })).toThrow();
+    expect(() => renderPlan({ ...plan, options: Array(4).fill({ name: 'x', description: 'y', example: '' }) })).toThrow();
+    expect(() => renderPlan({ ...plan, recommendedPackage: 'Platinum' })).toThrow();
+    expect(() => renderPlan({ ...plan, budgetCents: 100 })).toThrow();
+    expect(() => renderPlan({ ...plan, assumptions: [] })).toThrow();
   });
   it('accepts the Google Sites wrapper pattern and trusts only the Vercel IP header', () => {
     expect(frameAncestors()).toBe("'self'");

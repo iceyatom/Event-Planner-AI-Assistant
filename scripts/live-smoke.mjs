@@ -8,7 +8,7 @@ if (process.env.CONFIRM_LIVE_SMOKE !== 'yes' || !target) {
 const url = new URL(target);
 if (url.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(url.hostname)) throw new Error('Use HTTPS for the published app.');
 const history = [];
-for (const message of ['Plan a two-hour school fundraiser for 40 guests with a $300 budget.', 'Make it indoors and cut the budget to $200.']) {
+for (const message of ['Plan a two-hour school fundraiser for 40 guests.', 'Actually make it indoors for 120 guests.']) {
   const response = await fetch(new URL('/api/chat', url), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, history }), signal: AbortSignal.timeout(35000) });
   if (!response.ok) { console.error(`Smoke test failed safely: HTTP ${response.status}. Inspect operational server logs.`); process.exit(1); }
   const data = await response.json();

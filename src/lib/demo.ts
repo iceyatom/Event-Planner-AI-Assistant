@@ -4,31 +4,39 @@ import { basePlan, renderPlan } from './planner';
 // Deliberately deterministic sample logic. This is never a fallback for OpenAI.
 export function demoReply(request: ChatRequest) {
   const current = request.message.toLowerCase();
-  if (/book|confirmed|vendor|live price/.test(current)) return 'Demo sample: I cannot book a venue or confirm vendor prices. I can help draft questions for a vendor and an estimated event budget. What kind of event are you planning?';
+  if (/book|confirmed|vendor|price|cost|how much/.test(current)) return 'Demo sample: I cannot book vendors or quote prices. Package pricing is on the Novavents site, and I can suggest event ideas and the package that fits best. What kind of event are you planning?';
   const context = [...request.history.filter(m => m.role === 'user').map(m => m.content), request.message].join(' ').toLowerCase();
-  if (!/event|fundrais|party|celebrat|agenda|budget|indoor|guest|checklist|theme|workshop/.test(context)) return 'Demo sample: I help with event themes, agendas, budgets, and checklists. What kind of event would you like to plan?';
+  if (!/event|fundrais|party|celebrat|agenda|wedding|gala|indoor|guest|checklist|theme|workshop/.test(context)) return 'Demo sample: I help with event themes, agendas, checklists, and choosing a Novavents package. What kind of event would you like to plan?';
   const last = (pattern: RegExp) => [...context.matchAll(pattern)].at(-1)?.[1];
-  const guests = Number(last(/(\d+)\s*(?:guests|people|students)/g) || 40);
-  const budget = Number(last(/\$\s*(\d+(?:\.\d{1,2})?)/g) || 300);
-  const hours = last(/(\d+(?:\.\d+)?)\s*[- ]?hours?/g);
-  const minutes = hours ? Math.round(Number(hours) * 60) : /two[- ]hour/.test(context) ? 120 : 120;
-  const safeMinutes = Math.min(Math.max(minutes, 30), 480);
-  const safeBudget = Math.min(budget, 100000);
+  const guestText = last(/(\d+)\s*(?:guests|people|students|attendees)/g);
+  const hours = last(/(\d+(?:\.\d+)?)\s*[- ]?hours?/g) ?? (/two[- ]hour/.test(context) ? '2' : undefined);
+  const minutes = Math.min(Math.max(hours ? Math.round(Number(hours) * 60) : 120, 30), 480);
+  const kind = /wedding/.test(context) ? 'Wedding' : /fundrais/.test(context) ? 'Fundraiser' : /gala/.test(context) ? 'Gala' : 'Celebration';
+  const indoor = /indoor/.test(context);
   const p = basePlan();
-  p.summary = `Demo sample · ${/fundrais/.test(context) ? 'School fundraiser' : 'Community gathering'}\nTheme: Small moments, big impact. A welcoming plan for ${guests} guests.`;
-  p.questions = ['What date and location should we plan for?', 'Is USD the right currency?'];
-  p.assumptions = [
-    `${safeMinutes} minutes; ${guests} guests${guests === 40 && !/40\s*(guests|people|students)/.test(context) ? ' (sample guest count)' : ''}.`,
-    `${/indoor/.test(context) ? 'Indoor room' : 'School space'} available at no charge, subject to permission.`,
-    `USD ${safeBudget.toFixed(2)} spending limit${!/\$/.test(context) ? ' (sample budget)' : ''}; prices below are invented examples.`,
+  p.knownFacts = [`Event: ${kind.toLowerCase()}`];
+  if (hours) p.knownFacts.push(`Length: about ${minutes / 60} hours`);
+  if (indoor) p.knownFacts.push('Setting: indoors');
+  if (!guestText) {
+    p.summary = `Demo sample · ${kind}\nLovely, let's shape this together. A couple of details will help me suggest ideas that fit.`;
+    p.questions = ['About how many guests are you expecting?', 'What feel are you going for: relaxed, lively, or elegant?'];
+    return renderPlan(p);
+  }
+  const guests = Number(guestText);
+  p.summary = `Demo sample · ${kind} for ${guests} guests\nHere are three directions to get us started.`;
+  p.knownFacts.splice(1, 0, `Guests: about ${guests}`);
+  if (!hours) p.knownFacts.push('Length: about 2 hours (assumed)');
+  p.options = [
+    { name: 'Garden Glow', description: `Soft string lights, greenery, and a relaxed ${indoor ? 'indoor garden' : 'open-air'} feel for easy mingling.`, example: 'Riverside Botanical Garden (demo sample name)' },
+    { name: 'Modern Minimal', description: 'Clean lines, a neutral palette, and one standout focal piece that keeps things polished but simple.', example: 'The Foundry Loft event space (demo sample name)' },
+    { name: 'Golden Hour Social', description: 'Warm tones, lounge seating, and an interactive station so guests have something to gather around.', example: 'Sunset Mobile Bar Co. (demo sample name)' },
   ];
-  const welcome = Math.round(safeMinutes / 8);
-  const close = welcome;
-  const mingle = Math.round(safeMinutes / 4);
-  p.agenda = [{ activity: 'Welcome and introduce the cause', minutes: welcome }, { activity: 'Activity stations and fundraising', minutes: safeMinutes - welcome - close - mingle }, { activity: 'Connect, refreshments, and thank supporters', minutes: mingle }, { activity: 'Wrap up and clean up', minutes: close }];
-  p.budgetCents = Math.round(safeBudget * 100);
-  const perGuest = guests > 0 ? Math.floor(p.budgetCents * 0.45 / guests) : 0;
-  p.items = [{ name: 'Refreshments', quantity: Math.min(guests, 100000), unitCents: perGuest }, { name: 'Activity supplies', quantity: 1, unitCents: Math.floor(p.budgetCents * 0.25) }, { name: 'Decorations and signs', quantity: 1, unitCents: Math.floor(p.budgetCents * 0.15) }, { name: 'Contingency', quantity: 1, unitCents: Math.floor(p.budgetCents * 0.15) }];
-  p.checklist = ['Confirm venue permission, accessibility, and any school rules.', 'Check actual prices and dietary needs without collecting personal records here.', 'Assign setup and cleanup volunteers; review the plan with your teacher.'];
+  p.recommendedPackage = guests <= 50 && minutes <= 360 ? 'Essential' : guests <= 150 && minutes <= 600 ? 'Signature' : 'Luxe';
+  p.packageReason = p.recommendedPackage === 'Essential'
+    ? `With ${guests} guests and a ${minutes / 60}-hour event, the essentials and day-of coordination should cover it well.`
+    : p.recommendedPackage === 'Signature'
+      ? `At ${guests} guests, a full timeline, custom design, and vendor management will keep everything running smoothly.`
+      : `For ${guests} guests or a long day, full-day management and premium vendor access give you the most support.`;
+  p.checklist = ['Pick the direction you like best.', 'Confirm the date and venue.', 'Review the recommended package on the Novavents site.'];
   return renderPlan(p);
 }
