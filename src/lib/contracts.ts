@@ -10,17 +10,21 @@ export const requestSchema = z.object({
 export type Message = z.infer<typeof messageSchema>;
 export type ChatRequest = z.infer<typeof requestSchema>;
 export type Mode = 'demo' | 'live' | 'disabled';
-export type ChatResult = { reply: string; mode: Mode; contextTrimmed: boolean };
+// contextUsed: percent (0-100) of the conversation's room in use after this reply.
+export type ChatResult = { reply: string; mode: Mode; contextTrimmed: boolean; contextUsed: number };
 
 // Keep the provider schema compact; validate numerical bounds again locally.
+// No price or cost fields: the assistant suggests ideas and a package, never prices.
+export const packageNames = ['Essential', 'Signature', 'Luxe'] as const;
 export const planSchema = z.object({
   summary: z.string(),
   questions: z.array(z.string()).max(2),
-  assumptions: z.array(z.string()),
+  knownFacts: z.array(z.string()),
+  // example: a named venue or business that fits the idea, or '' when none applies.
+  options: z.array(z.object({ name: z.string(), description: z.string(), example: z.string() }).strict()).max(3),
+  recommendedPackage: z.enum(packageNames).nullable(),
+  packageReason: z.string(),
   agenda: z.array(z.object({ activity: z.string(), minutes: z.number().int() }).strict()),
-  currency: z.string(),
-  budgetCents: z.number().int().nullable(),
-  items: z.array(z.object({ name: z.string(), quantity: z.number().int(), unitCents: z.number().int() }).strict()),
   checklist: z.array(z.string()),
 }).strict();
 export type Plan = z.infer<typeof planSchema>;

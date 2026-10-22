@@ -18,9 +18,9 @@ Proposed store: **Upstash Redis Free**, provisioned by the student. Its pricing 
 3. Copy its REST endpoint and read/write REST token privately into `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. The read-only token cannot reserve attempts. The token needs EVAL and the commands used in the Lua script (TIME, GET, INCR, EXPIRE, EXPIREAT, ZREMRANGEBYSCORE, ZCARD, ZADD).
 4. Generate `IP_HASH_SECRET` privately: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Paste the result into the secret field, not chat. Use at least 32 characters and preserve it across deployments so IP windows stay consistent.
 5. Every production instance must share this one database and its fixed `{event-planner}` namespace. Never shard counters per instance, region, deployment or browser. Preview deployments must use demo mode or isolated test credentials, not a way to bypass production limits.
-6. Start with 30 requests per 60-second sliding window for each IP. Many students may share one school IP; test at school and adjust `IP_BURST_LIMIT` up to 100 if needed. Global limits remain 100/day and 500/month. UTC, not local midnight, resets the global periods.
+6. Start with 30 requests per 60-second sliding window for each IP. Many students may share one school IP; test at school and adjust `IP_BURST_LIMIT` up to 100 if needed. Global limits are 400/day and 2,000/month. UTC, not local midnight, resets the global periods.
 
-Each accepted attempt executes multiple Redis commands within a single EVAL. At 500 attempts, normal classroom use should fit well within the Free tier. Denied traffic also reaches the store; abuse and unrelated database usage can exhaust the Free tier. If storage is unavailable or its response is ambiguous, the app refuses paid calls. Upstream failures and timed-out requests keep their reservations; there is no refund or automatic retry.
+Each accepted attempt executes multiple Redis commands within a single EVAL. At 2,000 attempts, normal classroom use should fit well within the Free tier. Denied traffic also reaches the store; abuse and unrelated database usage can exhaust the Free tier. If storage is unavailable or its response is ambiguous, the app refuses paid calls. Upstream failures and timed-out requests keep their reservations; there is no refund or automatic retry.
 
 ## 3. Publish code to GitHub when ready
 
@@ -62,8 +62,8 @@ Never stage `.env.local`, provider tokens or generated logs. The existing instru
 | `UPSTASH_REDIS_REST_URL` | Private HTTPS REST endpoint |
 | `UPSTASH_REDIS_REST_TOKEN` | Private read/write token |
 | `IP_HASH_SECRET` | Private random value of at least 32 characters |
-| `DAILY_REQUEST_LIMIT` | `100` maximum; may be lowered |
-| `MONTHLY_REQUEST_LIMIT` | `500` maximum; may be lowered |
+| `DAILY_REQUEST_LIMIT` | `400` maximum; may be lowered |
+| `MONTHLY_REQUEST_LIMIT` | `2000` maximum; may be lowered |
 | `IP_BURST_LIMIT` | `30` by default; 1–100 |
 | `IP_BURST_WINDOW_SECONDS` | `60` by default; 1–3600 |
 | `FRAME_ANCESTORS` | Space-separated HTTPS frame sources; for Google Sites use `https://sites.google.com`, which automatically includes Google's changing embed wrappers |
@@ -112,7 +112,7 @@ Remove-Item Env:SMOKE_BASE_URL
 
 Use the local base URL for local `next dev` if desired. The script does not bypass Vercel login or expose tokens. If a deployment is protected, fix production access rather than passing a bypass key. Stop on any 400/429/503 or demo response; diagnose configuration without looping through more paid calls. Record the two requests' token totals from server metadata, not message content. Account-specific access and structured-output compatibility are not verified until this succeeds. Manually assess plan quality and honesty with the acceptance prompts; successful HTTP responses alone do not establish quality.
 
-Rates verified 2026-10-11: input $0.20/million, output $1.20/million; cache writes can cost 1.25× ordinary input. Typical 2,000 input + 500 output tokens cost about $0.001 per reply. At 6,000 input + 800 output, ordinary pricing is $0.00216; using the cache-write input premium gives $0.00246. Round up to **$0.0025/attempt**, **$1.25/500 attempts/month**, or **under $0.005 for the two-call smoke test**, before taxes and future price changes. Hosting/storage are separate. No paid tools are enabled. This estimate is not a billing guarantee; compare early live usage with it without spending just to reach a test count.
+Rates verified 2026-10-11: input $0.20/million, output $1.20/million; cache writes can cost 1.25× ordinary input. Typical 2,000 input + 500 output tokens cost about $0.001 per reply. At 6,000 input + 800 output, ordinary pricing is $0.00216; using the cache-write input premium gives $0.00246. Round up to **$0.0025/attempt**, at most **$1.00/day (400 attempts)** and **$5.00/month (2,000 attempts)**, or **under $0.005 for the two-call smoke test**, before taxes and future price changes. Hosting/storage are separate. No paid tools are enabled. This estimate is not a billing guarantee; compare early live usage with it without spending just to reach a test count.
 
 ## 7. Disable and recover
 

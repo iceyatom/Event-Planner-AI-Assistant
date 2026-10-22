@@ -9,8 +9,8 @@ async function run(ip: string, extra = {}) {
 }
 beforeEach(async () => { await redis.flushall(); });
 it('executes the production Lua for concurrent attempts without exceeding daily limit', async () => {
-  const results = await Promise.all(Array.from({ length: 150 }, (_, i) => run(`ip-${i}`)));
-  expect(results.filter(r => r[0] === 1)).toHaveLength(100);
+  const results = await Promise.all(Array.from({ length: 450 }, (_, i) => run(`ip-${i}`)));
+  expect(results.filter(r => r[0] === 1)).toHaveLength(400);
   expect(results.filter(r => r[1] === 'daily')).toHaveLength(50);
 });
 it('enforces the month independently and denied bursts consume no global attempts', async () => {
@@ -23,5 +23,7 @@ it('enforces the month independently and denied bursts consume no global attempt
 });
 it('does not put raw IPs into keys and refuses increased global caps', () => {
   expect(quotaCommand('192.0.2.1', env).join(' ')).not.toContain('192.0.2.1');
-  expect(() => quotaCommand('ip', { ...env, DAILY_REQUEST_LIMIT: '101' })).toThrow();
+  expect(() => quotaCommand('ip', { ...env, DAILY_REQUEST_LIMIT: '401' })).toThrow();
+  expect(() => quotaCommand('ip', { ...env, MONTHLY_REQUEST_LIMIT: '2001' })).toThrow();
+  expect(quotaCommand('ip', env).slice(3)).toEqual(expect.arrayContaining(['400', '2000']));
 });

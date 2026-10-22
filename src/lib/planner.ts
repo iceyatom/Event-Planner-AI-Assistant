@@ -1,38 +1,43 @@
+import facts from '@/data/facts.json';
 import { planSchema, type Plan } from './contracts';
 
 export function renderPlan(value: unknown) {
   const plan = planSchema.parse(value);
-  if (!/^[A-Z]{3}$/.test(plan.currency) || plan.items.length > 12 || plan.agenda.length > 12) throw new Error('Invalid plan');
-  const money = (cents: number) => `${plan.currency} ${(cents / 100).toFixed(2)}`;
+  if (plan.agenda.length > 12 || plan.checklist.length > 12) throw new Error('Invalid plan');
   const bounded = (n: number, max: number) => {
     if (!Number.isSafeInteger(n) || n < 0 || n > max) throw new Error('Invalid number');
     return n;
   };
-  let total = 0;
-  const costs = plan.items.map(item => {
-    const cost = bounded(item.quantity, 100000) * bounded(item.unitCents, 100000000);
-    total += cost;
-    return `${item.name}: ${item.quantity} × ${money(item.unitCents)} = ${money(cost)}`;
-  });
   let elapsed = 0;
   const agenda = plan.agenda.map(item => {
     const start = elapsed;
     elapsed += bounded(item.minutes, 1440);
     return `${start}–${elapsed} min: ${item.activity}`;
   });
-  if (plan.budgetCents !== null) bounded(plan.budgetCents, 1000000000);
-  const difference = plan.budgetCents === null ? null : plan.budgetCents - total;
+  const pkg = plan.recommendedPackage && facts.packages.find(p => p.name === plan.recommendedPackage);
   return [
     plan.summary,
     plan.questions.length ? `A couple of details\n${plan.questions.map(q => `• ${q}`).join('\n')}` : '',
-    plan.assumptions.length ? `Assumptions to confirm\n${plan.assumptions.map(a => `• ${a}`).join('\n')}` : '',
+    plan.knownFacts.length ? `Known facts\n${plan.knownFacts.map(f => `• ${f}`).join('\n')}` : '',
+    plan.options.length ? `${plan.options.length === 3 ? 'Three' : 'A few'} directions to consider\n${plan.options.map((o, i) => `${i + 1}. ${o.name}: ${o.description}${o.example.trim() ? `\n   Example: ${o.example.trim()} (check availability)` : ''}`).join('\n')}` : '',
+    pkg ? `Recommended package · ${pkg.name} (${pkg.tagline.toLowerCase()})\n${plan.packageReason ? `${plan.packageReason}\n` : ''}Includes: ${pkg.includes.join(', ')}.\nSee all packages at ${facts.siteUrl}` : '',
     agenda.length ? `Suggested agenda\n${agenda.join('\n')}\nDuration: ${elapsed} minutes` : '',
-    costs.length ? `Estimated budget · not vendor quotes\n${costs.join('\n')}\nTotal: ${money(total)}${difference === null ? '' : `\n${difference >= 0 ? 'Remaining' : 'Over budget'}: ${money(Math.abs(difference))}`}` : '',
     plan.checklist.length ? `Next steps\n${plan.checklist.map(c => `□ ${c}`).join('\n')}` : '',
-    'Estimates need checking. Nothing has been booked or approved.',
+    FOOTER,
   ].filter(Boolean).join('\n\n');
 }
 
+const FOOTER = 'Ideas only. Nothing has been booked or approved.';
+
+// Shortens a past reply before it is sent back to the AI as history. Drops the parts
+// renderPlan adds the same way every time (package inclusions, site link, footer), which
+// the AI never needs to reread. The user still sees the full reply in the chat.
+export function compactReply(text: string) {
+  const kept = text.split('\n').filter(line => !line.startsWith('Includes: ') && !line.startsWith('See all packages at ') && line !== FOOTER);
+  const compact = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return compact || text;
+}
+
 export function basePlan(): Plan {
-  return { summary: '', questions: [], assumptions: [], agenda: [], currency: 'USD', budgetCents: null, items: [], checklist: [] };
+  return { summary: '', questions: [], knownFacts: [], options: [], recommendedPackage: null, packageReason: '', agenda: [], checklist: [] };
 }

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { handleChat } from '@/lib/server/chat';
 import { instructions, outputFormat, callModel, createModelRequest } from '@/lib/server/model';
-import { readInput, prepareInput } from '@/lib/server/input';
+import { readInput, prepareInput, contextUsage } from '@/lib/server/input';
 import { mode } from '@/lib/server/config';
-import { basePlan, renderPlan } from '@/lib/planner';
+import { basePlan, compactReply, renderPlan } from '@/lib/planner';
 import { demoReply } from '@/lib/demo';
 import { QuotaError, reserve, trustedIp } from '@/lib/server/quota';
 import { frameAncestors } from '@/lib/framing';
@@ -43,13 +43,24 @@ describe('validation and context', () => {
     expect(() => prepareInput({ ...input, message: '漢'.repeat(2000) }, instructions, outputFormat)).toThrow();
     expect(() => prepareInput(input, 'x'.repeat(6000), outputFormat)).toThrow();
   });
+  it('reports conversation memory use from the size budget or the 12-message cap, capped at 100', () => {
+    const msg = (content: string, role: 'user' | 'assistant' = 'user') => ({ role, content });
+    expect(contextUsage([], instructions, outputFormat)).toBe(0);
+    const small = contextUsage([msg('hi'), msg('hello', 'assistant')], instructions, outputFormat);
+    expect(small).toBe(17); // 2 of 12 messages is the closer limit
+    const big = contextUsage([msg('x'.repeat(1500)), msg('y'.repeat(1000), 'assistant')], instructions, outputFormat);
+    expect(big).toBeGreaterThan(small); expect(big).toBeLessThan(100);
+    expect(contextUsage(Array.from({ length: 12 }, () => msg('a')), instructions, outputFormat)).toBe(100);
+    expect(contextUsage([msg('z'.repeat(8000))], instructions, outputFormat)).toBe(100);
+  });
 });
 
 describe('live and disabled boundaries', () => {
   it('defaults to a clearly labeled offline demo', async () => {
     const model = upstream();
     const response = await handleChat(request(), { env: {}, callModel: model, log: vi.fn() });
-    expect((await response.json()).mode).toBe('demo'); expect(model).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.mode).toBe('demo'); expect(body.contextUsed).toBeGreaterThan(17); expect(body.contextUsed).toBeLessThan(100); expect(model).not.toHaveBeenCalled();
     expect(mode({ CHAT_ENABLED: 'true', DEMO_MODE: 'true' })).toBe('demo');
   });
   it.each([{ CHAT_ENABLED: 'false', DEMO_MODE: 'false' }, { CHAT_ENABLED: 'true', DEMO_MODE: 'false' }])('blocks disabled/missing-key configurations', async config => {
@@ -61,6 +72,7 @@ describe('live and disabled boundaries', () => {
     const events: string[] = []; const log = vi.fn();
     const response = await handleChat(request(), { env, reserve: vi.fn(async () => { events.push('reserve'); }), callModel: vi.fn(async () => { events.push('call'); return output(); }) as unknown as typeof callModel, log });
     expect(response.status).toBe(200); expect(events).toEqual(['reserve', 'call']);
+    expect((await response.json()).contextUsed).toBeGreaterThan(0);
     expect(JSON.stringify(log.mock.calls)).not.toContain(input.message); expect(JSON.stringify(log.mock.calls)).not.toContain(env.OPENAI_API_KEY);
     expect(log.mock.calls.some(([m]) => m.inputTokens === 900)).toBe(true);
     const payload = createModelRequest([{ role: 'user', content: 'test' }], env);
@@ -103,23 +115,56 @@ describe('live and disabled boundaries', () => {
 });
 
 describe('planner and deployment contracts', () => {
-  it('demo fundraiser preserves guest count and duration on revision and computes new total', () => {
+  it('demo asks questions first, then gives three options and one package with no prices', () => {
+    const early = demoReply({ message: 'I want to plan a wedding.', history: [] });
+    expect(early).toContain('A couple of details'); expect(early).not.toContain('Recommended package'); expect(early).toContain('• Event: wedding');
+    expect(early.match(/\?/g)?.length).toBeLessThanOrEqual(2);
     const first = demoReply(input);
-    expect(first).toContain('40 guests'); expect(first).toContain('Duration: 120 minutes'); expect(first).toContain('Total: USD 299.80'); expect(first).toContain('Remaining: USD 0.20');
-    const revised = demoReply({ message: 'Make it indoors and cut the budget to $200.', history: [{ role: 'user', content: input.message }, { role: 'assistant', content: first }] });
-    expect(revised).toContain('Indoor room'); expect(revised).toContain('40 guests'); expect(revised).toContain('Duration: 120 minutes'); expect(revised).toContain('Total: USD 200.00');
-    expect(revised.match(/\?/g)?.length).toBeLessThanOrEqual(2);
+    expect(first).toContain('40 guests'); expect(first).toContain('Three directions'); expect(first.match(/^\d\. /gm)).toHaveLength(3);
+    expect(first).toContain('Recommended package · Essential');
+    expect(first).toContain('Known facts\n• Event: fundraiser\n• Guests: about 40\n• Length: about 2 hours'); expect(first).not.toContain('(assumed)');
+    expect(first.match(/^   Example: .+ \(check availability\)$/gm)).toHaveLength(3);
+    const revised = demoReply({ message: 'Actually make it indoors for 120 guests.', history: [{ role: 'user', content: input.message }, { role: 'assistant', content: first }] });
+    expect(revised).toContain('• Setting: indoors'); expect(revised).toContain('• Guests: about 120'); expect(revised).not.toContain('about 40'); expect(revised).toContain('Recommended package · Signature');
+    for (const reply of [early, first, revised]) expect(reply).not.toMatch(/\$|USD|\d+\.\d\d|budget|cost/i);
   });
-  it('labels limitations and redirects unrelated requests', () => {
+  it('labels limitations, deflects pricing and redirects unrelated requests', () => {
     expect(demoReply({ message: 'Book a vendor at a confirmed price', history: [] })).toContain('cannot book');
+    expect(demoReply({ message: 'How much does Luxe cost?', history: [] })).toContain('pricing is on the Novavents site');
     expect(demoReply({ message: 'Write a history essay', history: [] })).toContain('event themes');
     expect(instructions).toContain('at most TWO'); expect(instructions).toContain('Never claim bookings');
+    expect(instructions).toContain('NO PRICING'); expect(instructions).toContain('exactly THREE');
+    expect(instructions).not.toMatch(/\$\d/); expect(instructions).toContain('knownFacts'); expect(instructions).toContain('Never claim availability');
   });
-  it('calculates fractional currency exactly, reports over-budget amounts and rejects bad numbers', () => {
-    const plan = { ...basePlan(), budgetCents: 20, items: [{ name: 'Supplies', quantity: 3, unitCents: 10 }] };
-    expect(renderPlan(plan)).toContain('Total: USD 0.30'); expect(renderPlan(plan)).toContain('Over budget: USD 0.10');
-    expect(() => renderPlan({ ...plan, items: [{ name: 'invalid', quantity: -1, unitCents: 20 }] })).toThrow();
+  it('renders options and package details, and rejects bad plans', () => {
+    const plan = { ...basePlan(), knownFacts: ['Guests: about 40'], options: [{ name: 'A', description: 'a', example: 'Hall, Austin' }, { name: 'B', description: 'b', example: '' }], recommendedPackage: 'Luxe' as const, packageReason: 'Big day.', agenda: [{ activity: 'Welcome', minutes: 15 }] };
+    const text = renderPlan(plan);
+    expect(text).toContain('Known facts\n• Guests: about 40'); expect(text).toContain('1. A: a\n   Example: Hall, Austin (check availability)\n2. B: b\n'); expect(text).toContain('Recommended package · Luxe'); expect(text).toContain('Post-event follow-up'); expect(text).toContain('Duration: 15 minutes');
+    expect(() => renderPlan({ ...plan, agenda: [{ activity: 'invalid', minutes: -1 }] })).toThrow();
     expect(() => renderPlan({ ...plan, questions: ['a', 'b', 'c'] })).toThrow();
+    expect(() => renderPlan({ ...plan, options: Array(4).fill({ name: 'x', description: 'y', example: '' }) })).toThrow();
+    expect(() => renderPlan({ ...plan, recommendedPackage: 'Platinum' })).toThrow();
+    expect(() => renderPlan({ ...plan, budgetCents: 100 })).toThrow();
+    expect(() => renderPlan({ ...plan, assumptions: [] })).toThrow();
+  });
+  it('compacts past replies for history but keeps what the AI needs', () => {
+    const full = demoReply(input);
+    const compact = compactReply(full);
+    expect(full).toContain('Includes: '); expect(full).toContain('See all packages at'); expect(full).toContain('Ideas only.');
+    expect(compact).not.toContain('Includes: '); expect(compact).not.toContain('See all packages at'); expect(compact).not.toContain('Ideas only.');
+    for (const kept of ['Known facts', '• Guests: about 40', 'Three directions', 'Example: ', 'Recommended package · Essential', 'With 40 guests']) expect(compact).toContain(kept);
+    expect(compact).not.toMatch(/\n{3,}/); expect(compact.length).toBeLessThan(full.length);
+    expect(compactReply('Just a short answer?')).toBe('Just a short answer?');
+  });
+  it('sends compacted history to the model and counts it in the meter', async () => {
+    const first = demoReply(input);
+    const model = upstream();
+    const response = await handleChat(request({ message: 'Make it indoors.', history: [{ role: 'user', content: input.message }, { role: 'assistant', content: first }] }), { env, callModel: model, reserve: vi.fn(), log: vi.fn() });
+    expect(response.status).toBe(200);
+    const sent = model.mock.calls[0][0] as { role: string; content: string }[];
+    expect(sent[1].content).toBe(compactReply(first)); expect(sent[1].content).not.toContain('Includes: ');
+    const demo = await (await handleChat(request(), { env: {}, log: vi.fn() })).json();
+    expect(demo.contextUsed).toBe(contextUsage([{ role: 'user', content: input.message }, { role: 'assistant', content: compactReply(demo.reply) }], instructions, outputFormat));
   });
   it('accepts the Google Sites wrapper pattern and trusts only the Vercel IP header', () => {
     expect(frameAncestors()).toBe("'self'");
