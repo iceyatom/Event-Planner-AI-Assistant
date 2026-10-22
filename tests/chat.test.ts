@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { handleChat } from '@/lib/server/chat';
 import { instructions, outputFormat, callModel, createModelRequest } from '@/lib/server/model';
-import { readInput, prepareInput } from '@/lib/server/input';
+import { readInput, prepareInput, contextUsage } from '@/lib/server/input';
 import { mode } from '@/lib/server/config';
-import { basePlan, renderPlan } from '@/lib/planner';
+import { basePlan, compactReply, renderPlan } from '@/lib/planner';
 import { demoReply } from '@/lib/demo';
 import { QuotaError, reserve, trustedIp } from '@/lib/server/quota';
 import { frameAncestors } from '@/lib/framing';
@@ -43,13 +43,24 @@ describe('validation and context', () => {
     expect(() => prepareInput({ ...input, message: '漢'.repeat(2000) }, instructions, outputFormat)).toThrow();
     expect(() => prepareInput(input, 'x'.repeat(6000), outputFormat)).toThrow();
   });
+  it('reports conversation memory use from the size budget or the 12-message cap, capped at 100', () => {
+    const msg = (content: string, role: 'user' | 'assistant' = 'user') => ({ role, content });
+    expect(contextUsage([], instructions, outputFormat)).toBe(0);
+    const small = contextUsage([msg('hi'), msg('hello', 'assistant')], instructions, outputFormat);
+    expect(small).toBe(17); // 2 of 12 messages is the closer limit
+    const big = contextUsage([msg('x'.repeat(1500)), msg('y'.repeat(1000), 'assistant')], instructions, outputFormat);
+    expect(big).toBeGreaterThan(small); expect(big).toBeLessThan(100);
+    expect(contextUsage(Array.from({ length: 12 }, () => msg('a')), instructions, outputFormat)).toBe(100);
+    expect(contextUsage([msg('z'.repeat(8000))], instructions, outputFormat)).toBe(100);
+  });
 });
 
 describe('live and disabled boundaries', () => {
   it('defaults to a clearly labeled offline demo', async () => {
     const model = upstream();
     const response = await handleChat(request(), { env: {}, callModel: model, log: vi.fn() });
-    expect((await response.json()).mode).toBe('demo'); expect(model).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.mode).toBe('demo'); expect(body.contextUsed).toBeGreaterThan(17); expect(body.contextUsed).toBeLessThan(100); expect(model).not.toHaveBeenCalled();
     expect(mode({ CHAT_ENABLED: 'true', DEMO_MODE: 'true' })).toBe('demo');
   });
   it.each([{ CHAT_ENABLED: 'false', DEMO_MODE: 'false' }, { CHAT_ENABLED: 'true', DEMO_MODE: 'false' }])('blocks disabled/missing-key configurations', async config => {
@@ -61,6 +72,7 @@ describe('live and disabled boundaries', () => {
     const events: string[] = []; const log = vi.fn();
     const response = await handleChat(request(), { env, reserve: vi.fn(async () => { events.push('reserve'); }), callModel: vi.fn(async () => { events.push('call'); return output(); }) as unknown as typeof callModel, log });
     expect(response.status).toBe(200); expect(events).toEqual(['reserve', 'call']);
+    expect((await response.json()).contextUsed).toBeGreaterThan(0);
     expect(JSON.stringify(log.mock.calls)).not.toContain(input.message); expect(JSON.stringify(log.mock.calls)).not.toContain(env.OPENAI_API_KEY);
     expect(log.mock.calls.some(([m]) => m.inputTokens === 900)).toBe(true);
     const payload = createModelRequest([{ role: 'user', content: 'test' }], env);
@@ -134,6 +146,25 @@ describe('planner and deployment contracts', () => {
     expect(() => renderPlan({ ...plan, recommendedPackage: 'Platinum' })).toThrow();
     expect(() => renderPlan({ ...plan, budgetCents: 100 })).toThrow();
     expect(() => renderPlan({ ...plan, assumptions: [] })).toThrow();
+  });
+  it('compacts past replies for history but keeps what the AI needs', () => {
+    const full = demoReply(input);
+    const compact = compactReply(full);
+    expect(full).toContain('Includes: '); expect(full).toContain('See all packages at'); expect(full).toContain('Ideas only.');
+    expect(compact).not.toContain('Includes: '); expect(compact).not.toContain('See all packages at'); expect(compact).not.toContain('Ideas only.');
+    for (const kept of ['Known facts', '• Guests: about 40', 'Three directions', 'Example: ', 'Recommended package · Essential', 'With 40 guests']) expect(compact).toContain(kept);
+    expect(compact).not.toMatch(/\n{3,}/); expect(compact.length).toBeLessThan(full.length);
+    expect(compactReply('Just a short answer?')).toBe('Just a short answer?');
+  });
+  it('sends compacted history to the model and counts it in the meter', async () => {
+    const first = demoReply(input);
+    const model = upstream();
+    const response = await handleChat(request({ message: 'Make it indoors.', history: [{ role: 'user', content: input.message }, { role: 'assistant', content: first }] }), { env, callModel: model, reserve: vi.fn(), log: vi.fn() });
+    expect(response.status).toBe(200);
+    const sent = model.mock.calls[0][0] as { role: string; content: string }[];
+    expect(sent[1].content).toBe(compactReply(first)); expect(sent[1].content).not.toContain('Includes: ');
+    const demo = await (await handleChat(request(), { env: {}, log: vi.fn() })).json();
+    expect(demo.contextUsed).toBe(contextUsage([{ role: 'user', content: input.message }, { role: 'assistant', content: compactReply(demo.reply) }], instructions, outputFormat));
   });
   it('accepts the Google Sites wrapper pattern and trusts only the Vercel IP header', () => {
     expect(frameAncestors()).toBe("'self'");

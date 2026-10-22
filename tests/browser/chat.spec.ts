@@ -36,7 +36,8 @@ test('mobile at 320px and embed work without storage or cookies', async ({ page,
     await page.getByRole('button', { name: 'Send message' }).click();
     await expect(page.getByRole('log')).toContainText('Three directions');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await expect(page.getByRole('link', { name: 'Open chatbot ↗', exact: true })).toHaveAttribute('target', '_blank');
+    if (path === '/embed') await expect(page.getByRole('link', { name: /Open chatbot/ })).toHaveCount(0);
+    else await expect(page.getByRole('link', { name: 'Open chatbot ↗', exact: true })).toHaveAttribute('target', '_blank');
   }
   expect(await context.cookies()).toEqual([]);
   await page.screenshot({ path: 'test-results/mobile-embed.png', fullPage: true });

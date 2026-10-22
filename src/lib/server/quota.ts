@@ -40,7 +40,7 @@ export function quotaCommand(ip: string, env: Record<string, string | undefined>
   const digest = createHmac('sha256', env.IP_HASH_SECRET).update(ip).digest('hex');
   return ['EVAL', RESERVE_LUA, '2', '{event-planner}:quota', `{event-planner}:ip:${digest}`,
     String(monthStart), String(monthEnd),
-    String(limit(env.DAILY_REQUEST_LIMIT, 100, 100)), String(limit(env.MONTHLY_REQUEST_LIMIT, 500, 500)),
+    String(limit(env.DAILY_REQUEST_LIMIT, 400, 400)), String(limit(env.MONTHLY_REQUEST_LIMIT, 2000, 2000)),
     String(limit(env.IP_BURST_LIMIT, 30, 100)), String(limit(env.IP_BURST_WINDOW_SECONDS, 60, 3600)), randomUUID()];
 }
 

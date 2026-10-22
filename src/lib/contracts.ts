@@ -10,7 +10,8 @@ export const requestSchema = z.object({
 export type Message = z.infer<typeof messageSchema>;
 export type ChatRequest = z.infer<typeof requestSchema>;
 export type Mode = 'demo' | 'live' | 'disabled';
-export type ChatResult = { reply: string; mode: Mode; contextTrimmed: boolean };
+// contextUsed: percent (0-100) of the conversation's room in use after this reply.
+export type ChatResult = { reply: string; mode: Mode; contextTrimmed: boolean; contextUsed: number };
 
 // Keep the provider schema compact; validate numerical bounds again locally.
 // No price or cost fields: the assistant suggests ideas and a package, never prices.

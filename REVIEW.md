@@ -9,7 +9,7 @@ Reviewed 11 October 2026. The app is prepared locally in the supplied repository
 - Explicit offline demo mode; live calls disabled by default. No cookies, browser storage or transcript database.
 - Official OpenAI SDK integration with the requested model and parameters; structured plan output and arithmetic calculated in code.
 - Strict body/history validation, conservative 6,000-token input bound and visible history-trimming notice.
-- Atomic durable quota integration: global 100/day and 500/month, IP sliding window, reservation before upstream call, fail closed on store errors.
+- Atomic durable quota integration: global 400/day and 2,000/month (raised from 100/500 on 2026-10-21), IP sliding window, reservation before upstream call, fail closed on store errors.
 - Exact-origin CSP configuration, editable facts, setup instructions, opt-in live smoke script, shutdown and rollback guide.
 
 ## Checks completed
@@ -31,7 +31,7 @@ Reviewed 11 October 2026. The app is prepared locally in the supplied repository
 
 The server tests cover invalid/oversized JSON, injected roles/configuration, too much history, context trimming, disabled/missing-key modes, reserve-before-call ordering, safe metadata logging, store errors, rate limits, empty/incomplete/malformed output, exact request parameters, no SDK retries, and a simulated 25-second timeout. Planner checks cover fundraiser/revision behavior, honest demo limitations, two-question structure, integer-currency totals, over-budget reporting and invalid numbers.
 
-Concurrency tests execute the **production Lua script** in `ioredis-mock`'s Lua runtime: 150 simultaneous attempts accept exactly 100; burst-denied requests do not consume global capacity; monthly enforcement is independently tested with a lower configured cap. The two-request live smoke also exercised the provisioned Upstash REST store and confirmed both reservations. High-volume concurrency was tested locally in the emulator, not against the provisioned service.
+Concurrency tests execute the **production Lua script** in `ioredis-mock`'s Lua runtime: 450 simultaneous attempts accept exactly 400; burst-denied requests do not consume global capacity; monthly enforcement is independently tested with a lower configured cap. The two-request live smoke also exercised the provisioned Upstash REST store and confirmed both reservations. High-volume concurrency was tested locally in the emulator, not against the provisioned service.
 
 Browser tests cover desktop interaction, Enter/Shift+Enter, revisions, copy fallback, Clear, loading, disabled Send during requests, error recovery, context notices, literal rendering of HTML/script-looking input and output, 320px standalone/embed widths, and disabled storage/cookies. A fake sentinel key set only in the test server was absent from page HTML and loaded client scripts. Real keys were neither requested nor used.
 
